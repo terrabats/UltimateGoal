@@ -89,7 +89,6 @@ public class TerraBot {
         //Get CR Servos - Ring Shooter, Ring knocker, Wobble goal extender
         rs = getCRServo(hwMap, "rs", CRServo.Direction.FORWARD);
 
-        // TODO: GYRO NEEDS FIXING; Have fun @Shuhu (Not centered)
         gyro = hwMap.get(BNO055IMU.class, "gyror");
 
         initGyro();
@@ -150,9 +149,9 @@ public class TerraBot {
 
     //Method for moving
     public void move(double ft, double st, double t){
-        double gyroAngle = getGyroAngle();
-        double f = !globalMode ? ft : (ft * Math.sin(gyroAngle) - st * Math.sin(gyroAngle));
-        double s = !globalMode ? st : (-ft * Math.cos(gyroAngle) + st * Math.cos(gyroAngle));
+        double gyroAngle = Math.toRadians(getGyroAngle());
+        double f = !globalMode ? ft : ft*Math.cos(gyroAngle)-st*Math.sin(gyroAngle);
+        double s = !globalMode ? st : ft*Math.sin(gyroAngle)+st*Math.cos(gyroAngle);
         l1.setPower(f + s - t);
         l2.setPower(-f + s + t);
         r1.setPower(f - s + t);
