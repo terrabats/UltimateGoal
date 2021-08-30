@@ -13,6 +13,8 @@ import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 
 import globalfunctions.Constants;
+import globalfunctions.Storage;
+import globalfunctions.TimeData;
 import telefunctions.ButtonController;
 
 public class TerraBot {
@@ -66,6 +68,8 @@ public class TerraBot {
     public boolean globalMode = false;
 
     public double gyroStart = 0.0;
+
+    public Storage storage = new Storage();
 
 
     public void init(HardwareMap hwMap) {
@@ -213,5 +217,8 @@ public class TerraBot {
     public double getRightAngVel(){ return (outr.getVelocity()/Constants.GOBUILDA1_Ticks)*Constants.pi2;}
     public double getLeftAngVel(){ return (outl.getVelocity()/Constants.GOBUILDA1_Ticks)*Constants.pi2; }
 
+    public void saveTimeData(TimeData in){
+        storage.saveTimeData(in);
+    }
 
 }

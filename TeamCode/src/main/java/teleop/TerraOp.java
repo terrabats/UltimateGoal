@@ -3,15 +3,20 @@ package teleop;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
+import java.util.ArrayList;
+
 import global.TerraBot;
 import globalfunctions.Constants;
 import globalfunctions.TelemetryHandler;
+import globalfunctions.TimeData;
 
 @TeleOp(name = "TerraOp")
 public class TerraOp extends OpMode {
     // Define the bot, telemetryHandler, optimizer
     TerraBot bot = new TerraBot();
     TelemetryHandler telemetryHandler = new TelemetryHandler();
+
+    ArrayList<double[]> headingData = new ArrayList<>();
 
     @Override
     public void init() {
@@ -22,6 +27,7 @@ public class TerraOp extends OpMode {
         telemetryHandler.init(telemetry, bot);
         telemetry.addData("Ready?", "Yes!");
         telemetry.update();
+
 
     }
 
@@ -45,18 +51,17 @@ public class TerraOp extends OpMode {
 
         if (bot.globalModeController.isPressedOnce(gamepad1.y)) bot.globalMode = !bot.globalMode;
 
-//        if(bot.isOuttakeAvailable) {
-//            if (gamepad2.right_bumper) {
-//                bot.shootRings(Constants.RS_POW);
-//            } else if (gamepad2.left_bumper) {
-//                bot.shootRings(-Constants.RS_POW);
-//            } else {
-//                bot.shootRings(0);
-//            }
-//        }
+        headingData.add(new double[]{Math.round(bot.getGyroAngle())});
+
 
         telemetry.addData("globalMode", bot.globalMode);
         telemetry.update();
+    }
+
+    @Override
+    public void stop(){
+        TimeData headingTimeData = new TimeData("headingData", headingData, false);
+        bot.saveTimeData(headingTimeData);
     }
 
 }
