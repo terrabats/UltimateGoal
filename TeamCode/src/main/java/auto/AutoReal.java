@@ -3,14 +3,16 @@ package auto;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-//
-//@Disabled
-@Autonomous(name="AutoTest", group="Auto")
-public class AutoTest extends LinearOpMode {
+
+@Disabled
+@Autonomous(name="AutoReal", group="Auto")
+public class AutoReal extends LinearOpMode {
     AutoHandler autoHandler = new AutoHandler(this);
+
     @Override
     public void runOpMode() {
-        autoHandler.initialize(false);
-        autoHandler.autoT();
+       autoHandler.initialize(true);
+       autoHandler.autoAll();
     }
+
 }

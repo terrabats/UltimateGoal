@@ -2,80 +2,54 @@ package global;
 
 import com.qualcomm.hardware.bosch.BNO055IMU;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsI2cCompassSensor;
-import com.qualcomm.robotcore.eventloop.opmode.Disabled;
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CompassSensor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.robotcore.external.navigation.Acceleration;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
-import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
+
+import globalfunctions.Constants;
+import globalfunctions.Optimizer;
 
 public class AngularPosition {
-    public ModernRoboticsI2cCompassSensor compassSensor;
+    //Left gyro in expansion hub 1
     public BNO055IMU leftGyro;
+    //Left gyro in expansion hub 2
     public BNO055IMU rightGyro;
-//    public boolean calibratingCompass = true;
 
-//    public double lastHeadingGY = 0;
-//    public double headingGY = 0;
-
+    //Offset for left gyro
     public double addLeftGY = 0;
+    //Offset for right gyro
     public double addRightGY = 0;
-
+    //Is angular position failing?
     public boolean isFailing = false;
+    //Number of checks failed
+    public int checksFailed = 0;
 
-
+    //Initialized gyro sensors and reset heading to 0
     public void init(HardwareMap hwMap){
-        compassSensor = hwMap.get(ModernRoboticsI2cCompassSensor.class, "cp");
         leftGyro = hwMap.get(BNO055IMU.class, "gyrol");
         rightGyro = hwMap.get(BNO055IMU.class, "gyror");
-
-        compassSensor.setMode(CompassSensor.CompassMode.MEASUREMENT_MODE);
-
         initGyro();
-        resetGyro();
-
+        resetGyro(0);
     }
-
-    public double getHeading(double robotTheta) {
+    //Get the heading if the old heading is close to the new one
+    public double getHeading(double oldHeading) {
         double headingGY = getHeadingGY();
-        double headingCS = getHeadingCS();
-        boolean gyAccurate = Math.abs(robotTheta - headingGY) < Constants.ANGLE_ACCURACY;
-        boolean csAccurate = Math.abs(robotTheta - headingCS) < Constants.ANGLE_ACCURACY;
-        isFailing = !gyAccurate && !csAccurate;
-        if (gyAccurate && csAccurate) {
-            return 0.5 * (headingGY + headingCS);
-        } else if (gyAccurate) {
+        boolean gyAccurate = Math.abs(oldHeading - headingGY) < Constants.ANGLE_ACCURACY;
+        isFailing = !gyAccurate;
+        if(isFailing){
+            checksFailed +=1;
+        }
+        if (gyAccurate) {
             return headingGY;
-        } else if (csAccurate) {
-            return headingCS;
+        }else{
+            return oldHeading;
         }
-        return 0;
     }
 
-    public double getHeading() {
-        return 0.5 * (getHeadingGY() + getHeadingCS());
-    }
-
-    public double getHeadingCS(){
-        double dir = Constants.COMPASS_START - compassSensor.getDirection();
-        if (dir < 0) {
-            dir += 360;
-        }
-        return dir;
-    }
-
-//    public void setCompassMode () {
-//        if (calibratingCompass && !compassSensor.isCalibrating()) {
-//            compassSensor.setMode(CompassSensor.CompassMode.MEASUREMENT_MODE);
-//            calibratingCompass = false;
-//        }
-//    }
+    //Initialize gyro sensors
     public void initGyro(){
         BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
         parameters.angleUnit = BNO055IMU.AngleUnit.DEGREES;
@@ -84,16 +58,16 @@ public class AngularPosition {
         leftGyro.initialize(parameters);
         rightGyro.initialize(parameters);
     }
-
-    public void resetGyro() {
-//        addGY = (int) gyroSensor.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES).firstAngle;
-//        headingGY = 0;
-        addLeftGY = getHeadingCS() - getAngle(leftGyro);
-        addRightGY = getHeadingCS() - getAngle(rightGyro);
+    //Reset the gyro sensors to a certain heading
+    public void resetGyro(double heading) {
+        addLeftGY = heading - getAngle(leftGyro);
+        addRightGY = heading - getAngle(rightGyro);
     }
+    //Get the angle from a gyro sensors
     public float getAngle(BNO055IMU gyro) {
         return gyro.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES).firstAngle;
     }
+    //Get the heading from the left gyro
     public double getHeadingLeftGY() {
         double ang = getAngle(leftGyro) + addLeftGY;
 
@@ -104,6 +78,7 @@ public class AngularPosition {
         }
         return ang;
     }
+    //Get the heading from the right gyro
     public double getHeadingRightGY() {
         double ang = getAngle(rightGyro) + addRightGY;
 
@@ -115,15 +90,22 @@ public class AngularPosition {
 
         return ang;
     }
+    //Get the heading from both gyros without checking
     public double getHeadingGY() {
-//        double ang = 0.5 * (getAngle(leftGyro) + getAngle(rightGyro)) + addGY;
-//
-//        ang = ang < 0 ? (ang + 360) : ang;
-        double ang = 0.5 * (getHeadingLeftGY() + getHeadingRightGY());
+        double lgy = getHeadingLeftGY();
+        double rgy = getHeadingRightGY();
+        double ang = 0;
+        if(Math.abs(lgy - rgy) < 20) {
+             ang = Optimizer.weightedAvg(new double[]{lgy, rgy}, new double[]{1, 1});
+        }else{
+             ang = lgy;
+        }
         if (ang < 0) {
             ang += 360;
         }
+
         return ang;
     }
+
 
 }

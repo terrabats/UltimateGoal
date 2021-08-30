@@ -1,182 +1,210 @@
 package autofunctions;
 
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.DcMotor;
+import java.util.ArrayList;
 
 import global.TerraBot;
+import globalfunctions.Constants;
+import globalfunctions.Sleep;
 import util.CodeSeg;
-import util.Rect;
-
+import util.Stage;
 
 public class RobotFunctions {
-
-    TerraBot bot = null;
-    public LinearOpMode op = null;
-
-    public TerraCV.RingNum ringnum;
-
-    TerraCV terraCV = new TerraCV();
-
-    public void init(TerraBot t, LinearOpMode o) {
-        bot = t;
-        op = o;
-        terraCV.init(o,false);
+    //Terrabot to use for methods
+    public TerraBot bot;
+    //Path to use for methods
+    public Path rfPath;
+    //Initialize the bot
+    public void init(TerraBot bot){
+        this.bot = bot;
     }
-
-    public CodeSeg intake(final double pow){
-        return new CodeSeg() {
+    //Move the wobble goal extender
+    public ArrayList<Stage> moveWGE(final double pos){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
             @Override
-            public void run() {
+            public boolean run(double in) {
+                bot.controlWGE(pos);
+                bot.moveArm(bot.getRestPowArm());
+                return bot.isControlWgeDone(pos);
+            }
+        });
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.wge.setPower(0);
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Move the wobble goal arm
+    public ArrayList<Stage> moveWGA(final double deg, final double pow){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.moveArmWithEncWithoutWGE(deg, pow);
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Move the wobble goal claw
+    public ArrayList<Stage> moveClaw(final int idx, final double offset){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.claw(bot.cllControl.getPos(idx)+offset, bot.clrControl.getPos(idx)-offset);
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Turn towards the goal
+    public ArrayList<Stage> turnToGoal(){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.isMovementAvailable = false;
+                bot.fastMode = false;
+                rfPath = new Path(bot.odometry.getAll());
+                rfPath.init(bot);
+                rfPath.addSetpoint(0, 0, (bot.getRobotToGoalAngle()-bot.odometry.h));
+                return true;
+            }
+        });
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                double[] pows = rfPath.update(bot.odometry.getAll());
+                bot.move(pows[1], pows[0], pows[2]);
+                return !rfPath.isExecuting;
+            }
+        });
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.isMovementAvailable = true;
+                bot.move(0,0,0);
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Change autoaimer mode
+    public ArrayList<Stage> changeAAMode(final int mode){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.autoAimer.shotMode = mode;
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Add a custom codeseg
+    public ArrayList<Stage> addCustom(final CodeSeg cs){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                cs.run();
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Add a wait
+    public ArrayList<Stage> addWait(final double time){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                Sleep.trySleep(() -> Thread.sleep((int)(time*1000)));
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Move the ring shooter
+    public ArrayList<Stage> moveRS(final double pow){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.rs.setPower(pow);
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Outtake the rings
+    public ArrayList<Stage> outtake(final double pow){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
+                bot.outr.setPower(pow);
+                bot.outl.setPower(pow);
+                return true;
+            }
+        });
+        return stages;
+    }
+    //Intake the rings
+    public ArrayList<Stage> intake(final double pow){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
+            @Override
+            public boolean run(double in) {
                 bot.intake(pow);
+                return true;
             }
-        };
+        });
+        return stages;
     }
-
-    public CodeSeg outtake(final double speed){
-        return new CodeSeg() {
+    public ArrayList<Stage> shoot(final int numRings){
+        ArrayList<Stage> stages = new ArrayList<>();
+        stages.add(new Stage() {
             @Override
-            public void run() {
-                double sp = speed*bot.MAX_OUTTAKE_SPEED;
-                bot.outrController.setTargetSpeed(sp);
-                bot.outlController.setTargetSpeed(sp);
-                double outrPow = bot.outrController.getPow();
-                double outlPow = bot.outlController.getPow();
-                bot.outr.setPower(outrPow);
-                bot.outl.setPower(outlPow);
+            public boolean run(double in) {
+                bot.intake(0);
+                bot.outtaking = true;
+                bot.autoAimer.shotMode = 0;
+                return true;
             }
-        };
-    }
-
-    public CodeSeg wobbleArm(final double deg, final double pow){
-        return new CodeSeg() {
+        });
+        stages.add(new Stage() {
             @Override
-            public void run() {
-                bot.arm.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-                bot.arm.setTargetPosition(bot.degreesToTicks(deg));
-                bot.arm.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-                bot.arm.setPower(pow);
-                while (op.opModeIsActive() && bot.arm.isBusy()){ }
-                bot.arm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-                bot.arm.setPower(0);
-
+            public boolean run(double in) {
+                return !bot.autoAimer.hasReached;
             }
-        };
-    }
-
-    public CodeSeg turnArm(final double pos){
-        return new CodeSeg() {
+        });
+        stages.add(new Stage() {
             @Override
-            public void run() {
-                bot.turnWobbleArm(pos);
-
+            public boolean run(double in) {
+                bot.rs.setPower(Constants.RS_POW);
+                return true;
             }
-        };
-    }
-    public CodeSeg lift(final int index){
-        return new CodeSeg() {
+        });
+        stages.addAll(addWait(0.7));
+        stages.add(new Stage() {
             @Override
-            public void run() {
-                bot.lift(bot.liftControl.getPos(index));
+            public boolean run(double in) {
+                bot.outr.setPower(0);
+                bot.outl.setPower(0);
+                bot.rs.setPower(0);
+                bot.outtaking = false;
+                bot.autoAimer.done();
+                return true;
             }
-        };
-    }
-    public CodeSeg grab(final int index){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                bot.grab(bot.grabControl.getPos(index));
-            }
-        };
-    }
-    public void scanRings(){
-        while (!op.isStarted() && !op.isStopRequested()) {
-            terraCV.takePictureBeforeInit();
-            Rect cropped = new Rect(0, 0, 1280, 720).crop(610,450,490,100);
-            TerraCV.RingNum num = terraCV.getRingNum(cropped);
-            if(num != null) {
-                telemetryText(num.toString());
-                ringnum = num;
-            }
-        }
-    }
-
-    public CodeSeg shoot(final double speed){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                bot.shooter.start();
-                while (bot.shooter.executing){
-                    bot.update();
-                    bot.outtakeWithEncoders(speed);
-                }
-                if(!bot.shooter.pausing){
-                    bot.outtake(0);
-                }
-
-            }
-        };
-    }
-
-    public CodeSeg changeAcc(final double sx, final double sy, final double sh, final Path path){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                path.HAcc = path.HAccS*sh;
-                path.XAcc = path.XAccS*sx;
-                path.YAcc = path.YAccS*sy;
-            }
-        };
-    }
-    public CodeSeg changeKs(final double sk, final Path path){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                path.kScale = sk;
-            }
-        };
-    }
-
-    public CodeSeg toggleOuttake(final TerraBot bot){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                bot.outtaking = !bot.outtaking;
-            }
-        };
+        });
+        return stages;
     }
 
 
-    public CodeSeg shootControl(final int cur){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                bot.shoot(bot.shootControlR.getPos(cur), bot.shootControlL.getPos(cur));
-            }
-        };
-    }
 
-    public CodeSeg updateXWithDis(final double x){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                bot.odometry.tx = bot.odometry.cmToTicks(bot.getDisL2()-x);
-            }
-        };
-    }
-
-    public CodeSeg changeOuttakePow(final double pow, final double vs, final Path path){
-        return new CodeSeg() {
-            @Override
-            public void run() {
-                path.shootSpeed = pow;
-                bot.outrController.setStartPow(bot.outtakeStartR*pow * vs);
-                bot.outlController.setStartPow(bot.outtakeStartL*pow * vs);
-            }
-        };
-    }
-
-    public void telemetryText(final String text) {
-        op.telemetry.addData(":", text);
-        op.telemetry.update();
-    }
 }

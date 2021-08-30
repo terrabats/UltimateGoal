@@ -1,185 +1,78 @@
-
 package autofunctions;
 
-import android.graphics.Bitmap;
-import android.graphics.Color;
+import org.opencv.core.Core;
+import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Point;
+import org.opencv.core.Rect;
+import org.opencv.core.RotatedRect;
+import org.opencv.core.Scalar;
+import org.opencv.core.Size;
+import org.opencv.imgproc.Imgproc;
+import org.openftc.easyopencv.OpenCvPipeline;
 
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.util.ElapsedTime;
-import com.vuforia.CameraDevice;
-import com.vuforia.Image;
-import com.vuforia.PIXEL_FORMAT;
-import com.vuforia.Vuforia;
-
-import org.firstinspires.ftc.robotcore.external.ClassFactory;
-import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer;
-import org.firstinspires.ftc.robotcore.external.tfod.Recognition;
-import org.firstinspires.ftc.robotcore.external.tfod.TFObjectDetector;
-
+import java.util.ArrayList;
 import java.util.List;
 
-import util.Rect;
+public class TerraCV extends OpenCvPipeline
+{
+    //Cases
+    public enum RingNum {ZERO, ONE, FOUR}
+    //frame after processing
+    public Mat processed = new Mat();
+    //RingNum detected
+    public RingNum ringNum;
 
-public class TerraCV {
+    //Hsv frame
+    public Mat hsv = new Mat();
+    //Position of rings on screen use telemetry to change
+    // Note: (x is actually y pos and starts at 0 from bottom, ypos starts at 0 from left and is x
+    public int xPos = 150; //75
+    public int yPos = 535;
 
-    public VuforiaLocalizer vuforia;
-    public final String VUFORIA_KEY ="AdfjEqf/////AAABmUFlTr2/r0XAj6nkD8iAbHMf9l6LwV12Hw/ie9OuGUT4yTUjukPdz9SlCFs4axhhmCgHvzOeNhrjwoIbSCn0kCWxpfHAV9kakdMwFr6ysGpuQ9xh2xlICm2jXxVfqYKGlWm3IFk1GuGR7N5jt071axc/xFBQ0CntpghV6siUTyuD4du5rKhqO1pp4hILhJLF5I6LbkiXN93utfwje/8kEB3+V4TI+/rVj9W+c7z26rAQ34URhQ5AcPlhIfjLyUcTW15+UylM0dxGiMpQprreFVaOk32O2epod9yIB5zgSin1bd7PiCXHbPxhVhMz0cMNRJY1LLfuDru3npuemePUkpSOp5SFbuGjzso9hDA/6V3L";
-    private static final String TFOD_MODEL_ASSET = "UltimateGoal.tflite";
-    private static final String LABEL_FIRST_ELEMENT = "Quad";
-    private static final String LABEL_SECOND_ELEMENT = "Single";
-    public TFObjectDetector tfod;
-    public double minConf = 0.7;
+    //average color and hue value
+    public double[] avgColor = new double[2];
+    public double avgH;
+    public double avgS;
+    public double avgV;
 
-
-    public VuforiaLocalizer.CloseableFrame currentFrame;
-    public Image img;
-    public Bitmap bm;
-
-    public boolean discount = false;
-
-    public int accuracy = 3;
+    public boolean show = false;
 
 
-    ElapsedTime debug = new ElapsedTime();
-    public double time = 0;
 
-    LinearOpMode op;
-    public void init(LinearOpMode op, boolean visible){
-        this.op = op;
-        initVuforia();
-        initTF(visible);
-    }
-    public void initVuforia(){
-        VuforiaLocalizer.Parameters parameters = new VuforiaLocalizer.Parameters();
-        parameters.vuforiaLicenseKey = VUFORIA_KEY;
-        parameters.cameraDirection = VuforiaLocalizer.CameraDirection.BACK;
-        vuforia = ClassFactory.getInstance().createVuforia(parameters);
-        Vuforia.setFrameFormat(PIXEL_FORMAT.RGB565, true);
-        vuforia.setFrameQueueCapacity(1);
-        CameraDevice.getInstance().setFlashTorchMode(true);
-    }
-    public void initTF(boolean visible){
-        TFObjectDetector.Parameters tfodParameters;
-        if(visible) {
-            int tfodMonitorViewId = op.hardwareMap.appContext.getResources().getIdentifier(
-                    "tfodMonitorViewId", "id", op.hardwareMap.appContext.getPackageName());
-            tfodParameters = new TFObjectDetector.Parameters(tfodMonitorViewId);
-        }else{
-            tfodParameters = new TFObjectDetector.Parameters();
+    @Override
+    public Mat processFrame(Mat input)
+    {
+//        input.convertTo(input, -1, 2, 100); //Artificially increase brightness
+        input.convertTo(input, -1, 2, 50);
+        Rect rectCrop = new Rect(xPos, yPos, 100,125); //define rect to crop image based on xpos and ypos
+        processed = new Mat(input, rectCrop); //crop
+        Imgproc.cvtColor(processed, hsv, Imgproc.COLOR_RGB2HSV); //convert to hsv color space
+        avgColor = Core.mean(hsv).val; //find the mean value of the colors
+        avgH = avgColor[0]; // find the mean hue value
+        avgS = avgColor[1];
+        avgV = avgColor[2];
+
+//        if(avgH > 90){ //for zero hue is usually around 100
+//            ringNum = RingNum.ZERO;
+//        }else if(avgH > 50){ //for one hue is usually around 70
+//            ringNum = RingNum.ONE;
+//        }else if(avgH > 10){ // for four hue is usually around 30
+//            ringNum = RingNum.FOUR;
+//        }
+        if(avgS > 50){
+            ringNum = RingNum.FOUR;
+        }else if(avgS > 30){
+            ringNum = RingNum.ONE;
+        }else if(avgS > 5){
+            ringNum = RingNum.ZERO;
         }
-        tfodParameters.minResultConfidence = (float) minConf;
-        tfod = ClassFactory.getInstance().createTFObjectDetector(tfodParameters, vuforia);
-        tfod.loadModelFromAsset(TFOD_MODEL_ASSET, LABEL_FIRST_ELEMENT, LABEL_SECOND_ELEMENT);
+        //Uncomment this line if you want to view fullscreen
+//        if(show) {
+//            Imgproc.resize(processed, processed, input.size());
+//        }
 
-    }
-
-
-    public void takePictureBeforeInit(){
-        //1280, 720
-        resetImg();
-        while (!op.isStarted() && img == null && !op.isStopRequested()) {
-            try {currentFrame = vuforia.getFrameQueue().take();}catch (InterruptedException e){}
-            long numImages = currentFrame.getNumImages();
-            for (int i = 0; i < numImages; i++) {
-                if (currentFrame.getImage(i).getFormat() == PIXEL_FORMAT.RGB565) {
-                    img = currentFrame.getImage(i);
-                    break;
-                }
-            }
-            if (img != null) {
-                bm = vuforia.convertFrameToBitmap(currentFrame);
-            }
-        }
-    }
-    public void resetImg(){
-        img = null;
-    }
-    public RingNum getRingNum(Rect area){
-        debug.reset();
-        RingNum num = RingNum.ZERO;
-        double val = 0;
-        double max = 0;
-        double enx = 0;
-        double eny = 0;
-        accuracy = 5;
-        for (int x = 400; x < 900; x+=50) {
-            for (int y = 0; y < 620; y+=50) {
-                Rect ar = new Rect(x,y,100,100);
-                val = getAverageOfPixelsBeforeInit(ar)*1000;
-                if(val > max){
-                    max = val;
-                    enx = x;
-                    eny = y;
-                }
-            }
-        }
-        if(600 < enx && enx < 800 && 450 < eny && eny < 650){
-            if (max > 25) {
-                num = RingNum.FOUR;
-            } else if (max > 10) {
-                num = RingNum.ONE;
-            }
-        }
-        time = debug.milliseconds();
-//
-//        op.telemetry.addData("val", max);
-//        op.telemetry.addData("enx", enx);
-//        op.telemetry.addData("eny", eny);
-//        op.telemetry.addData("num", num.toString());
-//        op.telemetry.update();
-
-        if(!discount) {
-            return num;
-        }else{
-            return null;
-        }
-    }
-    public double getAverageOfPixelsBeforeInit(Rect rect){
-        double total = 0;
-        int x1 = rect.getX1();
-        int y1 = rect.getY1();
-        int x2 = rect.getX2();
-        int y2 = rect.getY2();
-
-        for (int x = x1; x < x2; x+= accuracy) {
-            for (int y = y1; y < y2; y+= accuracy ) {
-                int pix = bm.getPixel(x,y);
-                float[] hsv = rgbToHSV(pix);
-                if(20 < hsv[0] && hsv[0] < 50) {
-                    total += hsv[1];
-                }
-                if(op.isStarted() || op.isStopRequested()){
-                    break;
-                }
-            }
-            if(op.isStarted() || op.isStopRequested()){
-                discount = true;
-                break;
-            }
-        }
-//
-//        int pix = bm.getPixel(600,350);
-//        float[] hsv = rgbToHSV(pix);
-//        op.telemetry.addData("0", hsv[0]);
-//        op.telemetry.addData("1", hsv[1]);
-//        op.telemetry.addData("2", hsv[2]);
-//        op.telemetry.update();
-//        op.telemetry.addData("posx", max[0]);
-//        op.telemetry.addData("posy", max[1]);
-//        op.telemetry.update();
-        return total/(rect.getArea());
-    }
-    public float[] rgbToHSV(int pix){
-        int r = Color.red(pix);
-        int g = Color.green(pix);
-        int b = Color.blue(pix);
-        float[] hsv = new float[3];
-        Color.RGBToHSV(r, g, b, hsv);
-        return hsv;
-    }
-    public enum RingNum {
-        ZERO,
-        ONE,
-        FOUR
+        return processed;
     }
 }

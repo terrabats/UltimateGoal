@@ -1,947 +1,722 @@
 package global;
 
-import android.graphics.Color;
-
-import com.qualcomm.hardware.bosch.BNO055IMU;
-import com.qualcomm.hardware.lynx.LynxModule;
-import com.qualcomm.hardware.modernrobotics.ModernRoboticsI2cRangeSensor;
 import com.qualcomm.hardware.rev.Rev2mDistanceSensor;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
-import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.hardware.SwitchableLight;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.robotcontroller.external.samples.SensorREV2mDistance;
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
-import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.openftc.revextensions2.ExpansionHubEx;
 
-import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
 
-import autofunctions.Localizer;
-import autofunctions.Odometry;
-import autofunctions.Path;
+import autofunctions.RobotFunctions;
+import autofunctions.RobotFunctionsHandler;
+import global.AngularPosition;
+import global.AutoAimer;
+import global.Localizer;
+import global.Odometry;
+import globalfunctions.Constants;
+import globalfunctions.Optimizer;
+import globalfunctions.Storage;
+import globalfunctions.TerraThread;
 import telefunctions.AutoModule;
+import telefunctions.ButtonController;
 import telefunctions.Cycle;
 import telefunctions.Limits;
-import telefunctions.ServoController;
-import telefunctions.SpeedController;
 import util.CodeSeg;
-import util.ThreadHandler;
-
+import util.Line;
+import util.Stage;
 
 public class TerraBot {
 
-    public DcMotor l1;
-    public DcMotor l2;
+    //Drive train Motors
     public DcMotor r1;
+    public DcMotor l1;
     public DcMotor r2;
+    public DcMotor l2;
 
-    public DcMotor in;
-    public DcMotor outr;
-    public DcMotor outl;
+    //Outtake Motors
+    public DcMotorEx outr;
+    public DcMotorEx outl;
+
+    //Wobble goal motor
     public DcMotor arm;
 
-    public Servo slr;
-    public Servo sll;
-    public Servo ssr;
-    public Servo ssl;
-    public Servo st;
-    public Servo sgr;
-    public Servo sgl;
+    //Intake motor
+    public DcMotor in;
 
-    public BNO055IMU gyro;
-    public ModernRoboticsI2cRangeSensor dsl2;
+    //Ring Shooter crservo
+    public CRServo rs;
+    //Ring Knocker crservo
+    public CRServo rk;
+    //Wobble goal extender crservo
+    public CRServo wge;
+    //Wobble goal pos distance sensor
+    public Rev2mDistanceSensor wgp;
 
-    public NormalizedColorSensor col;
-    public NormalizedColorSensor cor;
+    //Wobble goal claw servos
+    public Servo cll;
+    public Servo clr;
 
-    public boolean intaking = false;
-    public boolean outtaking = false;
-    public boolean fastmode = true;
-    public boolean powershot = false;
-    public boolean calRightFirst = false;
-    public boolean globalMode = false;
-    public boolean strafeMode = false;
-    public boolean matchGyro = false;
+    //Wobble goal claw controls
+    public Cycle cllControl = new Cycle(0.2, 0.5, 1);
+    public Cycle clrControl = new Cycle(1, 0.5, 0.0);
 
-    public int resettingArm = 0;
+    // Ring knock-down servos
+    public Servo fls;
+    public Servo frs;
 
-    public double turnStart = 0.25;
-    public double grabStart = 0.7;
-    public double liftStart = 0.0;
-    public double liftSecond = 0.45;
-    public double shootStartR = 0.08;
-    public double shootStartL = 0.06;
-    public double intakeSpeed = 1;
-    public double powerShotSpeed = 0.82;
-    public double maxArmPos = 215;
-    public double heading = 0;
-    public double lastAngle = 0;
-    public double lastArmAngle = 0;
+    // Ring knock-down servos controls
+    public Cycle flsControl = new Cycle(Constants.FLS_CLOSED, Constants.FLS_OPEN);
+    public Cycle frsControl = new Cycle(Constants.FRS_CLOSED, Constants.FRS_OPEN);
 
-    public double savedHeading = 0;
-
-
-    public final double NEVEREST256_TICKS = 7168;
-    public final double NEV_DEGREES_TO_TICKS = NEVEREST256_TICKS/360;
-    public final double GOBUILDA1_Ticks = 28;
-    public final double GO_DEGREES_TO_TICKS = GOBUILDA1_Ticks/360;
-    public final double MAX_OUTTAKE_SPEED = 32400;
-
-
-    public ElapsedTime timer = new ElapsedTime();
-    public ElapsedTime timer2 = new ElapsedTime();
-    public ElapsedTime gameTime = new ElapsedTime();
-
-    public Cycle grabControl = new Cycle(grabStart, 0.53);
-    public Cycle liftControl = new Cycle(liftStart, liftSecond);
-    public Cycle shootControlR = new Cycle(0.0, shootStartR, 0.18, 0.2);//0.22, 0.25
-    public Cycle shootControlL = new Cycle(0.0, shootStartL, 0.1, 0.26); //0.13, 0.26
-
-    public ServoController turnControl = new ServoController(turnStart, 0.0, 0.7);
-
-    public AutoModule shooter = new AutoModule();
-    public AutoModule powerShot = new AutoModule();
-    public AutoModule wobbleGoal = new AutoModule();
-    public AutoModule wobbleGoal2 = new AutoModule();
-    public AutoModule goback = new AutoModule();
-    public AutoModule calibrate = new AutoModule();
-    public AutoModule calibrateCol = new AutoModule();
-
+    //AutoAimer - Has methods for angle to target and shooting
+    public AutoAimer autoAimer = new AutoAimer();
+    //Angular Position - Has methods for gyro sensors
+    public AngularPosition angularPosition = new AngularPosition();
+    //Localizer - Has methods for distance sensors
+    public Localizer localizer = new Localizer();
+    //Limits - stops motors in range
     public Limits limits = new Limits();
 
-    public double ratio = 2.5;
-    public double outtakeStartR = 0.658;
-    public double outtakeStartL = outtakeStartR/ratio;
-    public SpeedController outrController = new SpeedController(0.3, 0.0, 0.0, outtakeStartR);//0.5
-    public SpeedController outlController = new SpeedController(0.3, 0.0, 0.0, outtakeStartL);//0.5
+    //Is the robot intaking?
+    public boolean intaking = false;
+    //Is the robot outtaking?
+    public boolean outtaking = false;
 
+
+    //Is the robot in fastMode?
+    public boolean fastMode = false;
+    //Has the wobble goal not been initialized yet?
+    public boolean wgeStartMode = true;
+    //What stage is the initalization of the wobble goal at?
+    public int wgStartMode = 0;
+    //Start Position of wobble goal in degs
+    public double wgStart = 0;
+
+    //Robot functions
+    public RobotFunctions rfs = new RobotFunctions();
+    //Robot function handler 1
+    public RobotFunctionsHandler rfh1 = new RobotFunctionsHandler();
+    public RobotFunctionsHandler rfh2 = new RobotFunctionsHandler();
+
+    //Automodule for shooting
+    public AutoModule shooter = new AutoModule();
+
+    //Automodule for wobble goal
+    public AutoModule wobbleGoal = new AutoModule();
+
+    //Automodule for powershot
+    public AutoModule powerShot = new AutoModule();
+    //List of automodules
+    public ArrayList<AutoModule> autoModules = new ArrayList<>();
+
+    //Button Controls - Make delay between clicks to only count them once
+    public ButtonController outtakeButtonController = new ButtonController();
+    public ButtonController fastModeController = new ButtonController();
+    public ButtonController powerShotController = new ButtonController();
+    public ButtonController knockdownController = new ButtonController();
+
+    //Odometry for position of robot
     public Odometry odometry = new Odometry();
-    public Localizer localizer = new Localizer();
 
-    public ThreadHandler threadHandler = new ThreadHandler();
+    //Thread for odometry at 100 htz
+    public TerraThread odometryThread;
+    //odometry timer - used for optimizing odometry using gyro
+    public ElapsedTime odometryTime = new ElapsedTime();
+    //Game time - used for telling the game time
+    public ElapsedTime gameTime = new ElapsedTime();
 
-    public ExpansionHubEx expansionHub;
-    public ExpansionHubEx expansionHub2;
 
-    public double[] startPos = {0,0};
+    //Is movement available in teleop?
+    public boolean isMovementAvailable = true;
+
+    //Is outtake available in teleop?
+    public boolean isOuttakeAvailable = true;
+
+    //Is intake available in teleop?
+    public boolean isIntakeAvailable = true;
+
+    //Is in powershot mode?
+    public boolean powershotMode = false;
+
+    //Storage - Used to save files
+    public Storage storage = new Storage();
+
+
+
 
     public void init(HardwareMap hwMap) {
+        //Get drivetrain
+        l1 = getMotor(hwMap, "l1", DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        l2 = getMotor(hwMap, "l2", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        r1 = getMotor(hwMap, "r1", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        r2 = getMotor(hwMap, "r2", DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
-        l1 = initMotor(hwMap, "l1", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        l2 = initMotor(hwMap, "l2", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        r1 = initMotor(hwMap, "r1", DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        r2 = initMotor(hwMap, "r2", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        in = initMotor(hwMap, "in", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        outr = initMotor(hwMap, "outr", DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.FLOAT, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        outl = initMotor(hwMap, "outl", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        arm = initMotor(hwMap, "arm", DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        //Get Intake, Outtake, Wobble Goal
+        in = getMotor(hwMap, "in", DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.FLOAT, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        outr = getMotorEx(hwMap, "outr", DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.FLOAT, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        outl = getMotorEx(hwMap, "outl", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        arm = getMotor(hwMap, "arm", DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE, DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
-//        slr = hwMap.get(Servo.class, "slr");
-//        sll = hwMap.get(Servo.class, "sll");
-//        ssr = hwMap.get(Servo.class, "ssr");
-//        ssl = hwMap.get(Servo.class, "ssl");
-//        st = hwMap.get(Servo.class, "st");
-//        sgr = hwMap.get(Servo.class, "sgr");
-//        sgl = hwMap.get(Servo.class, "sgl");
-
-        gyro = hwMap.get(BNO055IMU.class, "gyro");
-
-        dsl2 = hwMap.get(ModernRoboticsI2cRangeSensor.class, "dsl2");
-//        dsr1 = hwMap.get(DistanceSensor.class, "dsr1");
-//        dsl1 = hwMap.get(DistanceSensor.class, "dsl1");
-//        dsr2 = hwMap.get(DistanceSensor.class, "dsr2");
-
-        col = hwMap.get(NormalizedColorSensor.class, "col");
-        cor = hwMap.get(NormalizedColorSensor.class, "cor");
-
-
-        //expansionHub2 = hwMap.get(ExpansionHubEx.class, "Expansion Hub 2");
-        expansionHub = hwMap.get(ExpansionHubEx.class, "Expansion Hub 1");
-
-        List<LynxModule> allHubs = hwMap.getAll(LynxModule.class);
-
-        for (LynxModule module : allHubs) {
-            module.setBulkCachingMode(LynxModule.BulkCachingMode.AUTO);
-        }
-
-        slr.setPosition(liftStart);
-        sll.setPosition(1-liftStart);
-        ssr.setPosition(shootStartR);
-        ssl.setPosition(1-shootStartL);
-        st.setPosition(turnStart);
-        sgr.setPosition(grabStart);
-        sgl.setPosition(1-grabStart);
-
-        slr.setDirection(Servo.Direction.FORWARD);
-        sll.setDirection(Servo.Direction.REVERSE);
-        ssr.setDirection(Servo.Direction.FORWARD);
-        ssl.setDirection(Servo.Direction.REVERSE);
-        st.setDirection(Servo.Direction.FORWARD);
-        sgr.setDirection(Servo.Direction.FORWARD);
-        sgl.setDirection(Servo.Direction.REVERSE);
-
-        shootControlR.changeCurr(1);
-        shootControlL.changeCurr(1);
-
-        resetEncoders();
-
-        defineShooter();
-        definePowerShot();
-        defineWobbleGoal();
-        defineWobbleGoal2();
-        defineGoback();
-        defineCalibrate();
-        defineCalibrateCol();
-
-
-        limits.addLimit(arm, 0, maxArmPos);
-
-        initGyro();
-
-        odometry.init(getLeftOdo(), getMiddleOdo(), getRightOdo());
-
-        resetGyro();
-
-        col.setGain(10);
-        cor.setGain(10);
-    }
-
-    public DcMotorEx initMotor(HardwareMap hwMap, String name, DcMotorSimple.Direction dir, DcMotor.ZeroPowerBehavior zpb, DcMotor.RunMode mode) {
-        DcMotorEx a = hwMap.get(DcMotorEx.class, name);
-        a.setPower(0);
-        a.setDirection(dir);
-        a.setZeroPowerBehavior(zpb);
-        a.setMode(mode);
-        return a;
-    }
-
-    public void move(double f, double s, double t){
-        l1.setPower(f-s-t);
-        l2.setPower(-f-s+t);
-        r1.setPower(f+s+t);
-        r2.setPower(-f+s-t);
-    }
-
-    public void moveTank(double l, double r){
-        l1.setPower(l);
-        l2.setPower(-l);
-        r1.setPower(r);
-        r2.setPower(-r);
-    }
-
-    public void moveTeleOp(double f, double s, double t){
-        if(fastmode) {
-//            move(f, s, Math.signum(t)*t*t);
-            move((f*0.95) + Math.signum(f)*0.05, (s*0.9)+Math.signum(s)*0.1, (Math.signum(t)*t*t*0.7)+Math.signum(t)*0.3);
-        }else{
-            move((f*0.2) + Math.signum(f)*0.05, (s*0.2)+Math.signum(s)*0.1, (t*0.2)+Math.signum(t)*0.3);
-        }
-    }
-
-
-    public void intake(double p){
-        in.setPower(p);
-    }
-
-    public void outtake(double p){
-        outr.setPower(p*1.3);
-        outl.setPower(p*0.6);
-    }
-
-    public void turnArm(double p){
-        arm.setPower(p);
-    }
-
-    public void lift(double pos){
-        slr.setPosition(pos);
-        sll.setPosition(pos);
-    }
-
-    public void shoot(double pr, double pl){
-        ssr.setPosition(pr);
-        ssl.setPosition(pl);
-    }
-
-    public void turnWobbleArm(double pos){
-        st.setPosition(pos);
-    }
-
-    public void turnArmWithEnc(double deg, double pow){
-        arm.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        arm.setTargetPosition(degreesToTicks(deg));
-        arm.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        arm.setPower(pow);
-        while (arm.isBusy()){}
-        arm.setPower(0);
-        arm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-    }
-
-    public void grab(double pos){
-        sgr.setPosition(pos);
-        sgl.setPosition(pos);
-    }
-
-    public void defineShooter(){
-        AutoModule shooter = new AutoModule();
-        shooter.addStage(in, 1.0, 0.01);
-        if(matchGyro) {
-            shooter.addStage(slr, liftControl.getPos(1), 0.01);
-            shooter.addStage(sll, liftControl.getPos(1), 0.01);
-            shooter.addCustom(new CodeSeg() {
-                @Override
-                public void run() {
-                    fastmode = false;
-                }
-            }, 0.01);
-            shooter.addCustomOnce(new CodeSeg() {
-                @Override
-                public void run() {
-                    startOdoThreadTele();
-                    resetOdometry();
-                    setLEDs(128, 0, 128);
-                }
-            });
-            Path p = new Path(0, 0, 0);
-            p.addSetpoint(0, 0, 0);
-//            shooter.addPath(p, this);
-            //shooter.addMoveUntilLine(-0.3, this);
-            shooter.addStage(ssr, shootControlR.getPos(2), 0.01);
-            shooter.addStage(ssl, shootControlL.getPos(2), 0.01);
-            shooter.addStage(in, 0.0, 0.01);
-            shooter.addCustom(new CodeSeg() {
-                @Override
-                public void run() {
-                    intaking = false;
-                }
-            }, 0.01);
-            shooter.addCustomOnce(new CodeSeg() {
-                @Override
-                public void run() {
-                    odometry.ty = 0;
-                    if(isDisValid()) {
-                        odometry.tx = odometry.cmToTicks(getDisL2());
-                    }else{
-                        odometry.tx = odometry.cmToTicks(67);
-                    }
-                }
-            });
-            Path p1 = new Path(0, 0, 0);
-            p1.addSetpoint(67, 0, 0);
-//            shooter.addPath(p1, this);
-            shooter.addCustomOnce(new CodeSeg() {
-                @Override
-                public void run() {
-                    stopOdoThreadTele();
-                }
-            });
-        }else{
-            shooter.addStage(slr, liftControl.getPos(1), 0.01);
-            shooter.addStage(sll, liftControl.getPos(1), 1.5);
-            shooter.addCustom(new CodeSeg() {
-                @Override
-                public void run() {
-                    fastmode = false;
-                }
-            }, 0.01);
-            shooter.addStage(ssr, shootControlR.getPos(2), 0.01);
-            shooter.addStage(ssl, shootControlL.getPos(2), 1);
-            shooter.addStage(in, 0.0, 0.01);
-            shooter.addCustom(new CodeSeg() {
-                @Override
-                public void run() {
-                    intaking = false;
-                }
-            }, 0.01);
-        }
-
-        shooter.addWaitUntil();
-        shooter.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-//                if(!globalMode){
-//                    globalMode = true;
-//                    resetGyro();
-//                }
-                if(!matchGyro){
-                    matchGyro = true;
-                    resetGyro();
-                }
-            }
-        });
-        for(int i = 0; i < 3;i++) {
-            shooter.addStage(ssr, shootControlR.getPos(3), 0.01);
-            shooter.addStage(ssl, shootControlL.getPos(3), 0.4);
-            shooter.addStage(ssr, shootControlR.getPos(2), 0.01);
-            shooter.addStage(ssl, shootControlL.getPos(2), 0.4);
-        }
-        shooter.addCustom(new CodeSeg() {
-            @Override
-            public void run() {
-                fastmode = true;
-            }
-        }, 0.01);
-        shooter.addDelay(0.2);
-        shooter.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                setLEDs(0,255,0);
-            }
-        });
-        this.shooter = shooter;
-    }
-
-    public void definePowerShot(){
-//        AutoModule powerShot = new AutoModule();
-        powerShot.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                startOdoThreadTele();
-                resetOdometry();
-            }
-        });
-
-        powerShot.addStage(in, 1.0, 0.01);
-        powerShot.addCustom(new CodeSeg() {
-            @Override
-            public void run() {
-                fastmode = false;
-            }
-        }, 0.01);
-        powerShot.addStage(slr, liftControl.getPos(1), 0.01);
-        powerShot.addStage(sll, liftControl.getPos(1), 0.01);
-        Path p = new Path(0, 0, 0);
-        p.addSetpoint(0, 0, 0);
-//        powerShot.addPath(p, this);
-        powerShot.addStage(ssr, shootControlR.getPos(2), 0.01);
-        powerShot.addStage(ssl, shootControlL.getPos(2), 0.01);
-        powerShot.addStage(in, 0.0, 0.01);
-        powerShot.addCustom(new CodeSeg() {
-            @Override
-            public void run() {
-                intaking = false;
-            }
-        }, 0.01);
-        powerShot.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                odometry.ty = 0;
-                if(isDisValid()) {
-                    odometry.tx = odometry.cmToTicks(getDisL2());
-                }else{
-                    odometry.tx = odometry.cmToTicks(98);
-                }
-            }
-        });
-
-        Path path0 = new Path(98, 0, 0);
-        path0.HAcc = 1;
-        path0.addSetpoint(0, 0, 0);
-//        powerShot.addPath(path0, this);
-        powerShot.addWaitUntil();
-        powerShot.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                resetGyro();
-            }
-        });
-        powerShot.addStage(ssr, shootControlR.getPos(3), 0.01);
-        powerShot.addStage(ssl, shootControlL.getPos(3), 0.3);
-        powerShot.addStage(ssr, shootControlR.getPos(2), 0.01);
-        powerShot.addStage(ssl, shootControlL.getPos(2), 0.3);
-        Path path = new Path(98, 0, 0);
-        path.HAcc = 1;
-        path.addSetpoint(0, 0, -6);
-//        powerShot.addPath(path, this);
-        powerShot.addStage(ssr, shootControlR.getPos(3), 0.01);
-        powerShot.addStage(ssl, shootControlL.getPos(3), 0.3);
-        powerShot.addStage(ssr, shootControlR.getPos(2), 0.01);
-        powerShot.addStage(ssl, shootControlL.getPos(2), 0.3);
-        Path path1 = new Path(98, 0, -5);
-        path1.HAcc = 1;
-        path1.addSetpoint(0, 0, -6);
-//        powerShot.addPath(path1, this);
-        powerShot.addStage(ssr, shootControlR.getPos(3), 0.01);
-        powerShot.addStage(ssl, shootControlL.getPos(3), 0.3);
-        powerShot.addStage(ssr, shootControlR.getPos(2), 0.01);
-        powerShot.addStage(ssl, shootControlL.getPos(2), 0.3);
-        powerShot.addCustom(new CodeSeg() {
-            @Override
-            public void run() {
-                fastmode = true;
-            }
-        }, 0.01);
-        powerShot.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                stopOdoThreadTele();
-                setLEDs(0, 255, 0);
-                outtake(0);
-            }
-        });
-        powerShot.addDelay(1);
-
-        //this.powerShot = powerShot;
-    }
-    public void defineWobbleGoal(){
-//        wobbleGoal.addStage(ssr, shootControlR.getPos(0), 0.01);
-//        wobbleGoal.addStage(ssl, shootControlL.getPos(0), 0.01);
-        wobbleGoal.addStage(st, 0.65, 0.1);
-//        wobbleGoal.addStage(arm,  1, degreesToTicks(205));
-//        wobbleGoal.addWaitUntil();
-//        wobbleGoal.addStage(sgl, grabControl.getPos(1), 0.01);
-//        wobbleGoal.addStage(sgr, grabControl.getPos(1), 0.5);
-//        wobbleGoal.addStage(st, 0.18, 0.01);
-//        wobbleGoal.addStage(arm,  1, degreesToTicks(215));
-//        wobbleGoal.addStage(slr, liftControl.getPos(1), 0.01);
-//        wobbleGoal.addStage(sll, liftControl.getPos(1), 0.5);
-////        wobbleGoal.addStage(slr, liftControl.getPos(2), 0.01);
-////        wobbleGoal.addStage(sll, liftControl.getPos(2), 0.5);
-//        wobbleGoal.addDelay(0.25);
-//        wobbleGoal.addStage(st, 0.65, 0.05);
-//        wobbleGoal.addStage(slr, liftControl.getPos(0), 0.01);
-//        wobbleGoal.addStage(sll, liftControl.getPos(0), 0.01);
-//        wobbleGoal.addDelay(0.7);
-//        wobbleGoal.addStage(arm, 1, degreesToTicks(210));
-//        wobbleGoal.addSave(grabControl, 0);
-//        wobbleGoal.addSave(turnControl, 0.65);
-
-    }
-    public void defineWobbleGoal2(){
-        wobbleGoal2.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                setLEDs(0,0,255);
-            }
-        });
-        wobbleGoal2.addStage(st, 0.68, 0.1);
-        wobbleGoal2.addStage(arm,  1, degreesToTicks(185));
-        wobbleGoal2.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                fastmode = false;
-            }
-        });
-        wobbleGoal2.addWaitUntil();
-        wobbleGoal2.addStage(sgl, grabControl.getPos(1), 0.01);
-        wobbleGoal2.addStage(sgr, grabControl.getPos(1), 0.3);
-        wobbleGoal2.addStage(st, 1, 0.01);
-        wobbleGoal2.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                fastmode = true;
-            }
-        });
-        wobbleGoal2.addStage(arm, 1, degreesToTicks(95));
-        wobbleGoal2.addWaitUntil();
-        wobbleGoal2.addStage(st, 0.8, 0.01);
-        wobbleGoal2.addStage(arm, 1, degreesToTicks(180));
-        wobbleGoal2.addStage(sgl, grabControl.getPos(0), 0.01);
-        wobbleGoal2.addStage(sgr, grabControl.getPos(0), 0.3);
-        wobbleGoal2.addStage(arm, 1, degreesToTicks(120));
-        wobbleGoal2.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                setLEDs(0,255,0);
-            }
-        });
-    }
-
-    public void defineGoback(){
-        AutoModule back = new AutoModule();
-        back.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                shooter.start();
-            }
-        });
-        back.addDelay(0.5);
-        Path p1 = new Path(0,0,0);
-        p1.dScale = 4;
-        p1.addSetpoint(81,-180,0);
-//        back.addPath(p1, this);
-        back.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                localizer.l2 = getDisL2();
-                localizer.theta = getHeading();
-                odometry.tx = odometry.cmToTicks(localizer.getX());
-            }
-        });
-        Path p2 = new Path(0,0,0);
-        p2.addSetpoint(81,-180,0);
-//        back.addPath(p2, this);
-        back.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                shooter.start();
-            }
-        });
-        goback = back;
-    }
-
-    public void defineCalibrate(){
-//        AutoModule cal = new AutoModule();
-//        cal.addCustomOnce(new CodeSeg() {
-//            @Override
-//            public void run() {
-//                resetAll();
-//                localizer.startCalibrating(getDisL2(), getHeading(), odometry.getX(), odometry.getY());
-//            }
-//        });
-//        Path p1 = new Path(0,0,0);
-//        p1.addSetpoint(0,0,5);
-//        cal.addPath(p1, this);
-//        cal.addDelay(0.5);
-//        cal.addCustomOnce(new CodeSeg() {
-//            @Override
-//            public void run() {
-//                localizer.stopCalibrating(getDisL2(), getHeading(), odometry.getX(), odometry.getY());
-//                updateLocalizer();
-//                heading = (localizer.getCalibratedTheta()*1.5 + localizer.getAngle()*0.5)/2;
-//                lastAngle = (int) gyro.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES).firstAngle;
-//            }
-//        });
-//        cal.addDelay(0.5);
-//        Path p2 = new Path(0,0,0);
-//        p2.addSetpoint(0,0,0);
-//        cal.addPath(p2, this);
-//        cal.addDelay(0.5);
-//        cal.addCustomOnce(new CodeSeg() {
-//            @Override
-//            public void run() {
-//                resetOdometry();
-//                updateLocalizer();
-//                updateStartPos();
-//            }
-//        });
-
-
-//
-//        calibrate = cal;
-    }
-
-    public void defineCalibrateCol(){
-        AutoModule cal = new AutoModule();
-        cal.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                startOdoThreadTele();
-                resetOdometry();
-            }
-        });
-        Path p = new Path(0,0,0);
-        p.addSetpoint(0,0,0);
-//        cal.addPath(p, this);
-//        cal.addMoveUntilLine(-0.3, this);
-        cal.addDelay(0.5);
-        cal.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                odometry.ty = 0;
-                odometry.tx = odometry.cmToTicks(getDisL2());
-            }
-        });
-        Path p1 = new Path(0,0,0);
-        p1.addSetpoint(67,0,0);
-//        cal.addPath(p1, this);
-
-
-//        cal.addCustomOnce(new CodeSeg() {
-//            @Override
-//            public void run() {
-//                resetAll();
-//            }
-//        });
-//        cal.addCalibrateCol2(this);
-//        cal.addCustomOnce(new CodeSeg() {
-//            @Override
-//            public void run() {
-//                heading = localizer.getAngle(odometry.getY(), calRightFirst);
-//                lastAngle = (int) gyro.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES).firstAngle;
-//            }
-//        });
-//        cal.addCalibrateCol( this);
-//        cal.addCustomOnce(new CodeSeg() {
-//            @Override
-//            public void run() {
-//                resetAll();
-//                localizer.update(getDisL2(), 0);
-//                updateStartPos(-170);
-//            }
-//        });
-        cal.addCustomOnce(new CodeSeg() {
-            @Override
-            public void run() {
-                stopOdoThreadTele();
-            }
-        });
-
-        calibrateCol = cal;
-    }
-
-
-    public void resetAll(){
-        odometry.reset(getLeftOdo(), getMiddleOdo(), getRightOdo());
-        resetGyro();
-    }
-    public void resetOdometry(){
-        odometry.reset(getLeftOdo(), getMiddleOdo(), getRightOdo());
-    }
-
-    public void update(){
-        shooter.update();
-        powerShot.update();
-        wobbleGoal.update();
-        wobbleGoal2.update();
-        goback.update();
-        calibrate.update();
-        calibrateCol.update();
-        outlController.updateMotorValues(getOutlPos());
-        outrController.updateMotorValues(getOutrPos());
-    }
-
-    public boolean autoModulesRunning(){
-        return (shooter.executing || powerShot.executing|| wobbleGoal.executing || wobbleGoal2.executing || goback.executing || calibrate.executing || calibrateCol.executing);
-    }
-
-    public boolean autoModulesPaused(){return  wobbleGoal.pausing || shooter.pausing || wobbleGoal2.pausing || powerShot.pausing || goback.pausing || calibrate.pausing|| calibrateCol.pausing;}
-
-
-    public double getArmPos(){
-        return arm.getCurrentPosition()/NEV_DEGREES_TO_TICKS;
-    }
-    public double getArmVel(){
-        double vel =  (getArmPos()-lastArmAngle);
-        lastArmAngle = getArmPos();
-        return vel;
-    }
-
-    public int degreesToTicks(double deg){
-        return (int) (deg*NEV_DEGREES_TO_TICKS);
-    }
-
-    public boolean isArmInLimts(double dir){
-        return limits.isInLimits(arm, dir, getArmPos());
-    }
-
-    public double getOutrPos(){
-        return outr.getCurrentPosition()/GO_DEGREES_TO_TICKS;
-    }
-    public double getOutlPos(){
-        return outl.getCurrentPosition()/GO_DEGREES_TO_TICKS;
-    }
-
-
-
-    public void outtakeWithEncoders(double speed){
-        speed = speed*MAX_OUTTAKE_SPEED;
-        outrController.setTargetSpeed(outtakeStartR*speed);
-        outlController.setTargetSpeed(outtakeStartL*speed);
-        double outrPow = outrController.getPow();
-        double outlPow = outlController.getPow();
-        outr.setPower(outrPow);
-        outl.setPower(outlPow);
-    }
-
-    public void resetShooterIs(){
-        outrController.reset();
-        outlController.reset();
-    }
-    public void resetEncoders(){
-        arm.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        arm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        //Reset encoders for outtake and wobble goal
         outr.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         outr.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         outl.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         outl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        arm.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        arm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
-        in.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        in.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        l2.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        l2.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        r1.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        r1.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        //Get CR Servos - Ring Shooter, Ring knocker, Wobble goal extender
+        rs = getCRServo(hwMap, "rs", CRServo.Direction.FORWARD);
+        rk = getCRServo(hwMap, "rk", CRServo.Direction.FORWARD);
+        wge = getCRServo(hwMap, "wge", CRServo.Direction.REVERSE);
+
+        //Get claw Servos
+        cll = getServo(hwMap, "cll", Servo.Direction.FORWARD, Constants.CLL_GRAB);
+        clr = getServo(hwMap, "clr", Servo.Direction.REVERSE, Constants.CLR_GRAB);
+
+        // Get ring knock-down servos
+        fls = getServo(hwMap, "fls", Servo.Direction.FORWARD, Constants.FLS_CLOSED);
+        frs = getServo(hwMap, "frs", Servo.Direction.REVERSE, Constants.FRS_CLOSED);
+
+        //Get wobble goal pos distance sensor
+        wgp = hwMap.get(Rev2mDistanceSensor.class, "wgp");
+
+        //Initialize angular position and localizer
+        angularPosition.init(hwMap);
+        localizer.init(hwMap);
+
+        //Update odometry positions
+        odometry.updateEncoderPositions(getLeftOdo(), getCenterOdo(), getRightOdo());
+
+        //Add limits for wobble goal arm and extender
+        limits.addLimit(arm, Constants.WG_LOWER_LIMIT, Constants.WG_UPPER_LIMIT);
+        limits.addLimit(wge, 0, Constants.WGE_UPPER_LIMIT);
+
+        //Set coeffs for shooter
+        outr.setVelocityPIDFCoefficients(54, 0, 0, 14);
+        outl.setVelocityPIDFCoefficients(54, 0, 0, 14);
+
+
+        //Initialize robot functions
+        rfs.init(this);
+        //Start both robot function threads
+        rfh1.start();
+        rfh2.start();
+
+
+
     }
 
 
+    public void autoInit(LinearOpMode op){
+        // Initialize the robot
+        init(op.hardwareMap);
+        // Set the wobble goal start pos
+        wgStart = Constants.WG_START_POS_AUTON;
+        //Start the odometry thread
+        startOdoThreadAuto(false);
+    }
+    public void teleInit(HardwareMap hwMap){
+        // Initialize the robot
+        init(hwMap);
+        //Define Automodules
+        defineShooter();
+        defineWobbleGoal();
+        definePowershot();
+        // Start the odometry thread
+        startOdoThreadTele(false);
+        //Did auton run before this?
+        boolean shouldICareAboutAuton = false;
+        // If we don't want to use the last auton's data, reset the gyro to heading 0
+        if(!shouldICareAboutAuton){
+            angularPosition.resetGyro(0);
+            odometry.resetHeading(0);
+            updateOdoWithLocalizer();
+        }else{
+            // Use readings from last auton to find wg, robot, and angular positions
+            readFromAuton();
+        }
+    }
 
-    public void resetArm(){
-        if(resettingArm == 0){
-            if(Math.abs(getArmVel()) != 0) {
-                arm.setPower(-0.25);
-            }else{
-                arm.setPower(-0.05);
-            }
-            arm.setPower(-0.25);
-            resettingArm++;
-            timer.reset();
-        }else if(resettingArm == 1) {
-            if(getArmVel() == 0){
-                if(timer.seconds() > 0.3){
-                    arm.setPower(0);
-                    arm.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-                    arm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-                    resettingArm++;
-                }
-            }else{
-                timer.reset();
+
+    //Helper methods for getting hardware
+    public DcMotor getMotor(HardwareMap hwMap, String name, DcMotor.Direction dir, DcMotor.ZeroPowerBehavior zpb, DcMotor.RunMode mode){
+        DcMotor dcMotor = hwMap.get(DcMotor.class, name);
+        dcMotor.setPower(0);
+        dcMotor.setDirection(dir);
+        dcMotor.setZeroPowerBehavior(zpb);
+        dcMotor.setMode(mode);
+        return dcMotor;
+    }
+
+    public DcMotorEx getMotorEx(HardwareMap hwMap, String name, DcMotor.Direction dir, DcMotor.ZeroPowerBehavior zpb, DcMotor.RunMode mode){
+        DcMotorEx dcMotor = hwMap.get(DcMotorEx.class, name);
+        dcMotor.setPower(0);
+        dcMotor.setDirection(dir);
+        dcMotor.setZeroPowerBehavior(zpb);
+        dcMotor.setMode(mode);
+        return dcMotor;
+    }
+
+    public Servo getServo(HardwareMap hwMap, String name, Servo.Direction dir, double startpos){
+        Servo servo = hwMap.get(Servo.class, name);
+        servo.setDirection(dir);
+        servo.setPosition(startpos);
+        return servo;
+    }
+
+    public CRServo getCRServo(HardwareMap hwMap, String name, CRServo.Direction dir){
+        CRServo crServo = hwMap.get(CRServo.class, name);
+        crServo.setPower(0);
+        crServo.setDirection(dir);
+        return crServo;
+    }
+
+    //Method for moving
+    public void move(double f, double s, double t){
+        l1.setPower(f+s-t);
+        l2.setPower(-f+s+t);
+        r1.setPower(f-s+t);
+        r2.setPower(-f-s-t);
+    }
+    //Intake power p and check if not outtake to control ring shooter
+    public void intake(double p){
+        in.setPower(p);
+        if (isIntakeAvailable) { shootRings(-Math.signum(p)*Constants.RS_POW);}
+    }
+    //Toggles knockdown servos
+    public void toggleKnockdown(boolean hasPressed) {
+        if (knockdownController.isPressedOnce(hasPressed)) {
+            knockdownRings(flsControl.update(false, true), frsControl.update(false, true));
+        }
+    }
+    //Knocks down the rings by moving servos to certain pos
+    public void knockdownRings(double lPos, double rPos) {
+        fls.setPosition(lPos);
+        frs.setPosition(rPos);
+    }
+    //Outtake at power p
+    public void outtake(double p){
+        outr.setPower(p);
+        outl.setPower(p);
+    }
+    //Claw to posleft and posright
+    public void claw(double posLeft, double posRight){
+        cll.setPosition(posLeft);
+        clr.setPosition(posRight);
+    }
+    //Set claw to controller positions based on index
+    public void setClawPos(int ind) {
+        cllControl.changeCurr(ind);
+        clrControl.changeCurr(ind);
+        claw(cllControl.getPos(ind), clrControl.getPos(ind));
+    }
+    //Update claw for teleop
+    public void updateClaw(boolean dpl, boolean dpr) {
+        if (dpr) {
+            claw(cllControl.getPos(0), clrControl.getPos(0));
+        } else if (dpl) {
+            claw(cllControl.getPos(2), clrControl.getPos(2));
+        }
+    }
+    //Extend WGE at pow p
+    public void extendWobbleGoal(double pow) {
+        wge.setPower(pow);
+    }
+    public void shootRings(double pow){
+        rs.setPower(pow);
+    }
+
+    //Update intake for teleop
+    public void updateIntake(boolean left_bumper, boolean right_bumper) {
+        //Set intake on with right bumper and turn it off with left bumper and also go backward with left bumper
+        if(isIntakeAvailable) {
+            if (right_bumper) {
+                intaking = true;
+            } else if (left_bumper) {
+                intaking = false;
+                intake(-0.5);
+            } else if (intaking) {
+                intake(1);
+            } else {
+                intake(0);
             }
         }
     }
-    public boolean isDoneResettingArm(){
-        return resettingArm > 1;
-    }
 
-    public boolean isDisValid(){
-        double d = getDisL2();
-        return d > 20 && d < 150;
-    }
-
-
-    public double getLeftOdo(){
-        return -in.getCurrentPosition();
-    }
-    public double getRightOdo(){
-        return l2.getCurrentPosition();
-    }
-    public double getMiddleOdo(){
-        return -r1.getCurrentPosition();
-    }
-
-    public void initGyro(){
-        BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
-        parameters.angleUnit = BNO055IMU.AngleUnit.DEGREES;
-        parameters.accelUnit = BNO055IMU.AccelUnit.METERS_PERSEC_PERSEC;
-        parameters.calibrationDataFile = "BNO055IMUCalibration.json";
-        gyro.initialize(parameters);
-    }
-
-    public void resetGyro() {
-        lastAngle = (int) gyro.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES).firstAngle;
-        heading = 0;
-    }
-
-    public double getHeading() {
-        double ca = gyro.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES).firstAngle;
-        double da = ca - lastAngle;
-        if (da < -180)
-            da += 360;
-        else if (da > 180)
-            da -= 360;
-        heading += da;
-        lastAngle = ca;
-        return heading;
-    }
-
-    public void startOdoThreadTele(){
-        threadHandler.startTeleThread(new CodeSeg() {
-            @Override
-            public void run() {
-                odometry.updateGlobalPosition(getLeftOdo(), getMiddleOdo(), getRightOdo(), getHeading());
+    //Move for teleop
+    public void moveTeleOp(double f, double s, double t, double rt, double lt){
+        //If movement is available in teleop then move
+        if(isMovementAvailable){
+            //Fastmode movements are about twice as fast as not fastmode
+            if (fastMode) {
+                move(Math.signum(f) * Math.pow(Math.abs(f), 0.5), Math.signum(s) * Math.pow(Math.abs(s), 0.5), Math.signum(t) * Math.pow(Math.abs(t), 0.5));
+            } else {
+                move(0.5 * Math.signum(f) * Math.pow(Math.abs(f), 0.5), 0.5 * Math.signum(s) * Math.pow(Math.abs(s), 0.5), 0.4 * Math.signum(t) * Math.pow(Math.abs(t), 0.5));
             }
-        }, 30);
+        }
+        //Switch fastmode using button controller
+        if (fastModeController.isPressedOnce(rt > 0)) {
+            fastMode = !fastMode;
+            isMovementAvailable = true;
+        }
+
+        if(powerShotController.isPressedOnce(lt > 0)){
+            powershotMode = !powershotMode;
+        }
     }
-    public void stopOdoThreadTele() {
-        threadHandler.stopTeleThread();
+    //Move wobble goal arm at pow p with restpow
+    public void moveArm(double p){
+        if (isArmInLimits(p)) {
+            arm.setPower(p + getRestPowArm());
+        }
     }
-    public void startOdoThreadAuto(LinearOpMode op){
-        threadHandler.startAutoThread(new CodeSeg() {
-            @Override
-            public void run() {
-                odometry.updateGlobalPosition(getLeftOdo(), getMiddleOdo(), getRightOdo(), getHeading());
+    //Get rest pow for arm
+    public double getRestPowArm(){
+        return Constants.WG_REST_POW*Math.cos(Math.toRadians(getArmPos()));
+    }
+
+    //Move wobble goal arm with encoder and without wobble goal extender to pos deg and at pow p
+    public void moveArmWithEncWithoutWGE(double deg, double pow){
+        //Set arm to use encoder
+        arm.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        arm.setTargetPosition((int) ((deg - wgStart)*Constants.NEV_DEGREES_TO_TICKS));
+        arm.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        //Move arm at pow based on pos
+        moveArm(Math.abs(pow) * Math.signum(deg - getArmPos()));
+        while (arm.isBusy()){}
+        moveArm(0);
+        arm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+    }
+
+    //Get arm pos in degs using wgStart pos
+    public double getArmPos(){
+        return ((arm.getCurrentPosition()/Constants.NEV_DEGREES_TO_TICKS) + wgStart);
+    }
+    //Use distance sensor to get distance of wge
+    public double getWgePos() { return wgp.getDistance(DistanceUnit.CM) - Constants.WGE_START; }
+    //Check if the wobble goal arm is in limits
+    public boolean isArmInLimits(double dir){
+        return limits.isInLimits(arm, dir, getArmPos());
+    }
+    //Check if the wobble goal extender is in limits
+    public boolean isWgeInLimits(double dir) { return limits.isInLimits(wge, dir, getWgePos()) && !Optimizer.inRange(getArmPos(), Constants.WGE_IGNORE_RANGE); }
+
+    //Control wobble goal extender to a certain pos
+    public void controlWGE(double pos){
+        //If its not in start mode then move it
+        if (!wgeStartMode) {
+            //Move it until it reaches within a certain accuracy
+            double wgePos = getWgePos();
+            double targetPos =  Constants.WGE_UPPER_LIMIT*pos;
+            if (Math.abs(targetPos - wgePos) < Constants.WGE_ACC) {
+                wge.setPower(0);
+            } else {
+                wge.setPower(Math.signum(targetPos - wgePos));
             }
-        }, op, 30);
+        } else {
+            //Set startmode to true when arm pos is greater than 40 degs
+            wgeStartMode = getArmPos() < 40;
+        }
     }
-    public void stopOdoThreadAuto() {
-        threadHandler.stopAutoThread();
+    //Is controlling the wobble goal extender done?
+    public boolean isControlWgeDone(double pos){
+        double targetPos =  Constants.WGE_UPPER_LIMIT*pos;
+        return Math.abs(targetPos - getWgePos()) < Constants.WGE_ACC;
+    }
+    //Are any automodules running checks if they are inited
+    public boolean areAutomodulesRunning(){
+        for (AutoModule a: autoModules) {
+            if(a.isExecuting()){
+                return a.isExecuting();
+            }
+        }
+        return false;
+    }
+    //Update automodule
+    public void updateAutoModules(){
+        for (AutoModule a: autoModules) {
+            a.update();
+        }
     }
 
-    public double getVoltage(){
-        return expansionHub.read12vMonitor(ExpansionHubEx.VoltageUnits.VOLTS);
+
+    //Get angular position of outtake motors
+    public double getRightAngPos() {return (outr.getCurrentPosition() / Constants.GOBUILDA1_Ticks) * Constants.pi2; }
+    public double getLeftAngPos(){ return (outl.getCurrentPosition()/Constants.GOBUILDA1_Ticks)*Constants.pi2; }
+
+    //Get angular velocities of outtake motors
+    public double getRightAngVel(){ return (outr.getVelocity()/Constants.GOBUILDA1_Ticks)*Constants.pi2;}
+    public double getLeftAngVel(){ return (outl.getVelocity()/Constants.GOBUILDA1_Ticks)*Constants.pi2; }
+
+    //Get position of the robot using localizer
+    public double[] getLocalizerPos() {
+        return localizer.getPos();
     }
 
-    public double getVoltageScale(){
-        return ((getVoltage()-12.5)*-0.05)+1;
-        //0.367 - 14
+    //Updates localizer with gyro heading
+    public void updateLocalizerWithHeading() {
+        localizer.update(angularPosition.getHeadingGY());
+    }
+    //Sets heading of the robot by updating localizer, odometry, and angular position
+    public void setHeading(double angle) {
+        localizer.update(angle);
+        odometry.resetHeading(angle);
+        angularPosition.resetGyro(angle);
+    }
+    //Update odometry with localizer pos
+    public void updateOdoWithLocalizer() {
+        updateLocalizerWithHeading();
+        odometry.resetPos(getLocalizerPos());
+    }
+    //Update odometry with localizer and check
+    public void updateOdoWithLocalizerAndCheck(){
+        updateLocalizerWithHeading();
+        odometry.resetPos(localizer.getPos(odometry.getPos()));
+    }
+    //Update odometry with gyro heading
+    public void updateOdoWithGyro(){
+        odometry.resetHeading(angularPosition.getHeadingGY());
+    }
+    //Update odometry with gyro heading and check if odometry heading is already close
+    public void updateOdoWithGyroAndCheck(){
+        odometry.resetHeading(angularPosition.getHeading(odometry.h));
+    }
+
+    //Outtake with autoAimer calculations
+    public void outtakeWithCalculations(boolean isTele) {
+        if(outtaking){
+            if(outr.getMode().equals(DcMotor.RunMode.RUN_WITHOUT_ENCODER)){
+                outr.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+                outl.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+                if(isTele) {
+                    autoAimer.setOuttakePos(odometry.getPos());
+                }
+            }
+            if (autoAimer.hasPosBeenUpdated()) {
+                autoAimer.updateTargetSpeed();
+                autoAimer.resetOuttakePos();
+                outr.setVelocity(autoAimer.getOutrTargetVel());
+                outl.setVelocity(autoAimer.getOutlTargetVel());
+            }
+        }else{
+            if(outr.getMode().equals(DcMotor.RunMode.RUN_USING_ENCODER)){
+                outr.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                outl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            }
+            if(outr.getPower() != 0) {
+                outr.setPower(0);
+                outl.setPower(0);
+            }
+            if (!intaking) { shootRings(0); }
+        }
+    }
+    //Get odometry positions in ticks
+    public int getLeftOdo() { return -in.getCurrentPosition(); }
+    public int getRightOdo() { return l2.getCurrentPosition(); }
+    public int getCenterOdo() {return r2.getCurrentPosition(); }
+
+    //Update Odometry positions
+    public void updateOdometry() {
+        odometry.updateGlobalPosition(getLeftOdo(), getCenterOdo(), getRightOdo());
 
     }
 
-//    public double getDisR1(){
-//        return dsr1.getDistance(DistanceUnit.CM);
-//    }
-    public double getDisL2(){
-        return dsl2.getDistance(DistanceUnit.CM);
-    }
-//    public double getDisR2(){
-//        return dsr2.getDistance(DistanceUnit.CM);
-//    }
-//    public double getDisL1(){  return dsl1.getDistance(DistanceUnit.CM); }
+    //Optime odometry Heading to [-180,180] range
+    public void optimizeOdometryHeading(){ odometry.resetHeading(Optimizer.optimizeHeading(odometry.h)); }
 
-//    public void updateLocalizer(){
-//        double heading = getHeading();
-//        for(int i = 0; i < localizer.numGets; i++) {
-//            localizer.update(getDisR1(), getDisL1(), getDisR2(), getDisL2(), heading);
+
+    //Start odometry thread for autonomous
+    public void startOdoThreadAuto(final boolean useSensors){
+        CodeSeg run = () -> {
+            updateOdometry();
+            if(useSensors) {
+                updateOdometryUsingSensors();
+            }
+        };
+//        Stage exit = new Stage() {
+//            @Override
+//            public boolean run(double in) {
+//                return op.isStopRequested();
+//            }
+//        };
+        odometryThread = new TerraThread(run);
+        odometryThread.changeRefreshRate(Constants.ODOMETRY_REFRESH_RATE);
+        Thread t = new Thread(odometryThread);
+        t.start();
+    }
+
+    //Start odometry thread for teleop
+    public void startOdoThreadTele(final boolean useSensors){
+        CodeSeg run = () -> {
+            updateOdometry();
+            if(useSensors) {
+                updateOdometryUsingSensors();
+            }
+        };
+        odometryThread = new TerraThread(run);
+        odometryThread.changeRefreshRate(Constants.ODOMETRY_REFRESH_RATE);
+        Thread t = new Thread(odometryThread);
+        t.start();
+    }
+
+    //Stop odometry thread
+    public void stopOdoThread() {
+        if(odometryThread != null) {
+            odometryThread.stop();
+        }
+    }
+
+    public void updateOdometryUsingSensors(){
+        if(odometryTime.seconds() > (1/Constants.UPDATE_ODOMETRY_WITH_SENSORS_RATE)){
+            odometryTime.reset();
+            updateOdoWithGyroAndCheck();
+            updateOdoWithLocalizerAndCheck();
+        }
+    }
+
+    //Get Angle to Goal
+    public double getRobotToGoalAngle(){
+        return autoAimer.getRobotToGoalAngle(odometry.getPos());
+    }
+
+    //Initialize Wobble goal
+    public void initWobbleGoal(){
+        switch (wgStartMode){
+            case 0:
+                //Move arm to 45 degs
+                arm.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+                arm.setTargetPosition((int) ((45 - wgStart)*Constants.NEV_DEGREES_TO_TICKS));
+                arm.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                moveArm(Math.abs(1) * Math.signum(45 - getArmPos()));
+                wgStartMode++;
+                break;
+            case 1:
+                //Move wge to all the way out and stop moving arm
+                controlWGE(1);
+                if(!arm.isBusy()){
+                    wgStartMode++;
+                }
+                break;
+            case 2:
+                //Stop moving arm and wobble goal extender
+                moveArm(0);
+                wge.setPower(0);
+                arm.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                wgStartMode++;
+                break;
+            case 3:
+                //Move wge to right pos
+                controlWGE(1);
+                if(isControlWgeDone(1)) {
+                    wgStartMode++;
+                    wge.setPower(0);
+                }
+                break;
+            case 4:
+                break;
+        }
+
+    }
+    //Define shooter automodule
+    public void defineShooter(){
+        shooter.init(rfh1);
+        shooter.add(rfs.addCustom(() -> {
+            outtaking = true;
+            isOuttakeAvailable = false;
+            isIntakeAvailable = false;
+        }));
+        shooter.add(rfs.addWait(0.3));
+        shooter.add(rfs.turnToGoal());
+        shooter.add(rfs.moveRS(Constants.RS_POW));
+        shooter.add(rfs.addWait(1));
+        shooter.add(rfs.outtake(0));
+        shooter.add(rfs.moveRS(0));
+        shooter.add(rfs.addCustom(() -> {
+            outtaking = false;
+            isOuttakeAvailable = true;
+            isIntakeAvailable = true;
+        }));
+        autoModules.add(shooter);
+    }
+
+    public void definePowershot(){
+//        powerShot.init(this);
+//        powerShot.addCustom(() -> outtaking = true);
+//
+//        for (int i = 1; i < 4; i++) {
+//            powerShot.changeAutoAimerMode(i);
+//            powerShot.addWait(0.2);
+////            powerShot.addTurnToGoal();
+//            powerShot.addStage(rs, Constants.RS_POW);
+//            powerShot.addWait(0.2);
+//            powerShot.addStage(rs, 0);
+//            if(i < 3) {
+//                powerShot.addPause();
+//            }
 //        }
-//    }
-
-//    public void updateStartPos(){
-////        heading = localizer.getAngle();
-////        lastAngle = (int) gyro.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES).firstAngle;
-//        localizer.updateHeading(heading);
-//        startPos[0] = localizer.getX();
-//        startPos[1] = localizer.getY();
-//        odometrySave(startPos[0], startPos[1]);
-//    }
-
-    public void updateStartPos(double y){
-        startPos[0] = localizer.getX();
-        startPos[1] = y;
-        odometrySave(startPos[0], startPos[1]);
+//        powerShot.addStage(0, outr, outl);
+//        powerShot.addStage(rs, 0);
+//        powerShot.addCustom(() -> outtaking = false);
+//        powerShot.addPause();
+//        autoModules.add(powerShot);
     }
 
-    public void odometrySave(double x, double y){
-        odometry.tx = odometry.cmToTicks(x);
-        odometry.ty = odometry.cmToTicks(y);
-    }
-
-    public float[] getColorL(){
-        final float[] hsvValues = new float[3];
-        NormalizedRGBA colors = col.getNormalizedColors();
-        Color.colorToHSV(colors.toColor(), hsvValues);
-        return hsvValues;
-    }
-
-    public float[] getColorR(){
-        final float[] hsvValues = new float[3];
-        NormalizedRGBA colors = cor.getNormalizedColors();
-        Color.colorToHSV(colors.toColor(), hsvValues);
-        return hsvValues;
-    }
-
-    public double whiteValL(){
-         return getColorL()[2];
-    }
-    public double whiteValR(){
-        return getColorR()[2];
-    }
-
-    public void setLEDs(int r, int g, int b){
-        expansionHub.setLedColor(r, g, b);
-        //expansionHub2.setLedColor(r, g, b);
+    //Define wobble goal automodule
+    public void defineWobbleGoal(){
+//        wobbleGoal.init(this);
+//        wobbleGoal.addClaw( 2); //Open claw
+//        wobbleGoal.addControlWGE(1); //Mode wge out
+//        wobbleGoal.addWobbleGoal(-10, 1); //Move wg arm down
+//        wobbleGoal.addCustom(() -> fastMode = true); //Set to slowmode
+//        wobbleGoal.addPause(); // Wait for driver
+//        wobbleGoal.addClaw( 0); //Close claw
+//        wobbleGoal.addWait(0.5); // Wait 0.5
+//        wobbleGoal.addWobbleGoal( 120, 1); //Move wg arm up
+//        wobbleGoal.addControlWGE( 0.5); //move wge in to halfway
+//        wobbleGoal.holdWobbleGoalAndPause(); //Hold wobble gaol arm pause
+//        wobbleGoal.addMove(new double[]{0,20,0}, true); //Move forward 20 cm
+//        wobbleGoal.addClaw( 1); //open claw halfway
+//        wobbleGoal.addWobbleGoal( 160, 1); //Move woggle goal arm down
+//        wobbleGoal.addClaw( 2); //open claw
+//        wobbleGoal.addWait(0.7); //wait to drop
+//        wobbleGoal.addWobbleGoal( 45, 1); //Move arm forward
+//        wobbleGoal.addPause(); //Pause for next time
+//        autoModules.add(wobbleGoal);
     }
 
 
+    //Save data for telop in auton
+    public void saveForTele() {
+        storage.makeOutputFile("save");
+        storage.saveText(Double.toString(getArmPos()), "wgPos");
+        storage.saveText(Double.toString(angularPosition.getHeadingGY()), "heading");
+        storage.saveText(Arrays.toString(odometry.getPos()), "pos");
+    }
+    //Read date from auton in telop
+    public void readFromAuton() {
+        storage.makeOutputFile("save");
+        wgStart = Double.parseDouble(storage.readText("wgPos"));
+        angularPosition.resetGyro(Double.parseDouble(storage.readText("heading")));
+        odometry.resetPos(Optimizer.fromString(storage.readText("pos")));
+        odometry.resetHeading(angularPosition.getHeadingGY());
+        updateOdoWithLocalizerAndCheck();
+    }
+
+    //Stop the odometry thread and the two robot function threads
+    public void stop(){
+        stopOdoThread();
+        rfh1.stop();
+        rfh2.stop();
+    }
 
 
 
