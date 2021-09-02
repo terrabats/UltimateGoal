@@ -1,7 +1,7 @@
 package util;
 
 //Rect class defines a rectagle object
-public class Rect {
+public class Rect extends GeometryObject {
     //x, y, w, h are the x and y coords of the top left corner and w and h are width and height repectivly
     public int x;
     public int y;

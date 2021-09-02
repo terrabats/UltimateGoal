@@ -1,6 +1,6 @@
 package util;
 
-public class Line {
+public class Line extends GeometryObject {
     //start coords (x1,y1) end coords (x2,y2) mx is slope in x dir from 0-1 and my is the same for y
     public double x1;
     public double y1;
@@ -28,5 +28,4 @@ public class Line {
     public double getDis(){
         return Math.sqrt(mx*mx+my*my);
     }
-
 }

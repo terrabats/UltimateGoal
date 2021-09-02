@@ -1,6 +1,6 @@
 package util;
 
-public class Vector {
+public class Vector extends GeometryObject {
     //x and y coords of the tip of vector, theta is angle measured from the right horizontal
     public double x;
     public double y;
